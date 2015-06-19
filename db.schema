@@ -1,0 +1,11 @@
+
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email VARCHAR(320) UNIQUE,
+  password_algo VARCHAR(32) NULL,
+  password_hash VARCHAR(32) NULL,
+  created TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX id_index ON users (id);
+

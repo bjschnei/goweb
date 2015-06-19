@@ -1,0 +1,21 @@
+<html>
+<form action="signup" method="post">
+  {{ with .Form.Errors.Email}}
+   <p class="error">{{ . }}</p>
+  {{ end }}
+  <input type="email" name="email"
+   required
+   placeholder="Email">
+
+   {{ with .Form.Errors.Password}}
+    <p class="error">{{ . }}</p>
+   {{ end }}
+  <input type="password" name="password"
+   required
+   placeholder="Password" />
+  <input type="password" name="password2"
+   required
+   placeholder="Confirm Password" />
+  <input type="submit" value="Submit"/>
+</form>
+</html>

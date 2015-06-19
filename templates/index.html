@@ -1,0 +1,12 @@
+<html>
+  <div id="account">
+    {{ if .U }}
+      Hello {{ .U.Email }}
+      <a href="/account/logout">logout</a>
+    {{ else }}
+      <a href="/account/login">login</a>
+      <a href="account/signup">signup</a>
+    {{ end }}
+  </div>
+  <h1>Hello, World!</h1>
+</html>
