@@ -2,7 +2,6 @@ package account
 
 import (
 	"github.com/gorilla/schema"
-	"golang.org/x/crypto/bcrypt"
 
 	"database/sql"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 type loginForm struct {
 	Email    string
 	Password string
+	Token    string `schema:"csrf_token"`
 }
 
 type loginContext struct {
@@ -20,6 +20,10 @@ type loginContext struct {
 
 func newLoginContext() *loginContext {
 	return &loginContext{Form: &loginForm{}}
+}
+
+func (c *loginContext) setToken(t string) {
+	c.Form.Token = t
 }
 
 func loginHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
@@ -37,20 +41,21 @@ func loginHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 
 	if u, err := loadUserByEmail(db, c.Form.Email); err != nil {
 		c.Error = "Invalid username/password"
-		executeLoginTemplate(w, c)
-	} else if err = bcrypt.CompareHashAndPassword(
-		u.password_hash, []byte(c.Form.Password)); err != nil {
+		executeContextTemplate(w, "login.html", c)
+	} else if !u.isCorrectPassword(c.Form.Password) {
 		c.Error = "Invalid username/password"
-		executeLoginTemplate(w, c)
+		executeContextTemplate(w, "login.html", c)
 	} else if err := u.saveToSession(w, r); err != nil {
+		c.Error = err.Error()
+		executeContextTemplate(w, "login.html", c)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	// User logged in, redirect
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
-func executeLoginTemplate(w http.ResponseWriter, c *loginContext) {
-	err := templates.ExecuteTemplate(w, "login.html", c)
+func executeContextTemplate(w http.ResponseWriter, n string, c interface{}) {
+	err := templates.ExecuteTemplate(w, n, c)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}

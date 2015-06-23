@@ -2,6 +2,7 @@ package account
 
 import (
 	"github.com/gorilla/sessions"
+	"golang.org/x/crypto/bcrypt"
 
 	"database/sql"
 	"encoding/gob"
@@ -16,34 +17,30 @@ const (
 
 var store = sessions.NewCookieStore([]byte("todo_loaded_secret"))
 
+// TODO: make hash and algo private
+// Add field to keep track if user was loaded from db.
+// loading user from session sets field to false and fields lazy loaded
+// from db when requested.
 type User struct {
-	ID            int
-	Email         string
-	password_hash []byte
-	password_algo string
+	ID           int64
+	Email        string
+	PasswordHash []byte
+	PasswordAlgo string
 }
 
-func newUser(email string, password_hash []byte, password_algo string) *User {
-	return &User{
-		Email:         email,
-		password_hash: password_hash,
-		password_algo: password_algo}
+func newUser(email string) *User {
+	return &User{Email: email}
 }
 
 func loadUserByEmail(db *sql.DB, email string) (*User, error) {
-	var id int
-	var password_hash []byte
-	var password_algo string
-
+	u := newUser(email)
 	err := db.QueryRow(
 		"select id, password_hash, password_algo from users where email = ?",
 		email).
-		Scan(&id, &password_hash, &password_algo)
+		Scan(&u.ID, &u.PasswordHash, &u.PasswordAlgo)
 	if err != nil {
 		return nil, err
 	}
-	u := newUser(email, password_hash, password_algo)
-	u.ID = id
 	return u, nil
 }
 
@@ -82,13 +79,50 @@ func (u User) removeFromSession(w http.ResponseWriter, r *http.Request) error {
 	return session.Save(r, w)
 }
 
-func (u User) insert(db *sql.DB) error {
-	_, err := db.Exec(
+func (u *User) insert(db *sql.DB) error {
+	r, err := db.Exec(
 		"INSERT INTO users (email, password_hash, password_algo) VALUES ($1, $2, $3)",
 		u.Email,
-		u.password_hash,
-		u.password_algo)
-	return err
+		u.PasswordHash,
+		u.PasswordAlgo)
+
+	if err != nil {
+		return err
+	}
+	u.ID, err = r.LastInsertId()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (u *User) setPassword(password string) error {
+	ph, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	if err != nil {
+		return err
+	}
+	u.PasswordHash = ph
+	u.PasswordAlgo = "BCRYPT"
+	return nil
+}
+
+func (u *User) changePassword(db *sql.DB, p string) error {
+	if err := u.setPassword(p); err != nil {
+		return err
+	}
+
+	_, err := db.Exec(
+		"UPDATE users SET password_hash=$1, password_algo=$2 WHERE id=$3",
+		u.ID, u.PasswordHash, u.PasswordAlgo)
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (u User) isCorrectPassword(p string) bool {
+	return bcrypt.CompareHashAndPassword(u.PasswordHash, []byte(p)) != nil
 }
 
 func init() {

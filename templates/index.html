@@ -2,6 +2,7 @@
   <div id="account">
     {{ if .U }}
       Hello {{ .U.Email }}
+      <a href="/account/change_password">change_password</a>
       <a href="/account/logout">logout</a>
     {{ else }}
       <a href="/account/login">login</a>

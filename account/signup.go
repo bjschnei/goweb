@@ -3,7 +3,6 @@ package account
 import (
 	"github.com/gorilla/schema"
 	sqlite "github.com/mattn/go-sqlite3"
-	"golang.org/x/crypto/bcrypt"
 
 	"database/sql"
 	"net/http"
@@ -17,6 +16,7 @@ type signupForm struct {
 	Password  string
 	Password2 string
 	Errors    map[string]string
+	Token     string `schema:"csrf_token"`
 }
 
 type signupContext struct {
@@ -34,10 +34,15 @@ func newSignupContext() *signupContext {
 		PassLen: MIN_PASS_LEN}
 }
 
+func (c *signupContext) setToken(t string) {
+	c.Form.Token = t
+}
+
 func signupHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	decoder := schema.NewDecoder()
@@ -45,6 +50,7 @@ func signupHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	err = decoder.Decode(c.Form, r.PostForm)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	if !c.Form.validate() {
@@ -99,11 +105,11 @@ func (f *signupForm) validate() bool {
 }
 
 func (f *signupForm) createUser(db *sql.DB) (*User, error) {
-	ph, err := bcrypt.GenerateFromPassword([]byte(f.Password), 12)
-	if err != nil {
+	u := newUser(f.Email)
+
+	if err := u.setPassword(f.Password); err != nil {
 		return nil, err
 	}
-	u := newUser(f.Email, ph, "BCRYPT")
 	if err := u.insert(db); err != nil {
 		return nil, err
 	}

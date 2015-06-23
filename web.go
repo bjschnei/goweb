@@ -20,7 +20,7 @@ type homeContext struct {
 	U *account.User
 }
 
-func HomepageHandler(w http.ResponseWriter, r *http.Request) {
+func homepageHandler(w http.ResponseWriter, r *http.Request) {
 	u, err := account.UserFromRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -35,13 +35,13 @@ func HomepageHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 
-	log.SetOutput(os.Stdout)
+	log.SetOutput(os.Stderr)
 	db, err := sql.Open("sqlite3", "web.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 	mx := mux.NewRouter()
-	mx.HandleFunc("/", HomepageHandler)
+	mx.HandleFunc("/", homepageHandler)
 
 	asr := mx.PathPrefix("/account").Subrouter()
 	if err := account.CreateRoutes(asr, db); err != nil {

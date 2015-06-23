@@ -1,5 +1,5 @@
 <html>
-    <p class="error">{{ .Error }}</p>
+ <p class="error">{{ .Error }}</p>
 <form action="login" method="post">
   <input type="email" name="email"
    required
@@ -8,6 +8,7 @@
   <input type="password" name="password"
    required
    placeholder="Password" />
+  <input type="hidden" name="csrf_token" value="{{ .Form.Token }}"/>
   <input type="submit" value="Submit"/>
 </form>
 </html>
