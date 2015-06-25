@@ -2,6 +2,7 @@ package account
 
 import (
 	"github.com/gorilla/schema"
+	"github.com/gorilla/sessions"
 
 	"database/sql"
 	"net/http"
@@ -26,7 +27,16 @@ func (c *loginContext) setToken(t string) {
 	c.Form.Token = t
 }
 
-func loginHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+type loginHandler struct {
+	db *sql.DB
+	s  sessions.Store
+}
+
+func newLoginHandler(db *sql.DB, s sessions.Store) http.Handler {
+	return &loginHandler{db, s}
+}
+
+func (l loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -39,19 +49,20 @@ func loginHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	if u, err := loadUserByEmail(db, c.Form.Email); err != nil {
+	if u, err := loadUserByEmail(l.db, c.Form.Email); err != nil {
 		c.Error = "Invalid username/password"
 		executeContextTemplate(w, "login.html", c)
 	} else if !u.isCorrectPassword(c.Form.Password) {
 		c.Error = "Invalid username/password"
 		executeContextTemplate(w, "login.html", c)
-	} else if err := u.saveToSession(w, r); err != nil {
+	} else if err := u.saveToSession(l.s, w, r); err != nil {
 		c.Error = err.Error()
 		executeContextTemplate(w, "login.html", c)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else {
+		// User logged in, redirect
+		http.Redirect(w, r, "/", http.StatusFound)
 	}
-	// User logged in, redirect
-	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func executeContextTemplate(w http.ResponseWriter, n string, c interface{}) {

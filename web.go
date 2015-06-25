@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/bjschnei/goweb/account"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 	_ "github.com/mattn/go-sqlite3"
 
 	"database/sql"
@@ -11,6 +12,8 @@ import (
 	"net/http"
 	"os"
 )
+
+var store = sessions.NewCookieStore([]byte("todo_loaded_secret"))
 
 var templates = template.Must(template.ParseFiles(
 	"templates/index.html",
@@ -21,7 +24,7 @@ type homeContext struct {
 }
 
 func homepageHandler(w http.ResponseWriter, r *http.Request) {
-	u, err := account.UserFromRequest(r)
+	u, err := account.UserFromRequest(store, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -40,11 +43,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	am := account.NewAccountManager(store)
 	mx := mux.NewRouter()
 	mx.HandleFunc("/", homepageHandler)
 
 	asr := mx.PathPrefix("/account").Subrouter()
-	if err := account.CreateRoutes(asr, db); err != nil {
+	if err := am.CreateRoutes(asr, db, store); err != nil {
 		log.Fatal("unable to create account routes", err)
 	}
 

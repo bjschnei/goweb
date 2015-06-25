@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/gob"
 	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -14,8 +15,6 @@ const (
 	Session = "ACCOUNT"
 	UserKey = "USER"
 )
-
-var store = sessions.NewCookieStore([]byte("todo_loaded_secret"))
 
 // TODO: make hash and algo private
 // Add field to keep track if user was loaded from db.
@@ -41,15 +40,16 @@ func loadUserByEmail(db *sql.DB, email string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Printf("user loaded with id %v", u.ID)
 	return u, nil
 }
 
-func UserFromRequest(r *http.Request) (*User, error) {
-	session, err := store.Get(r, Session)
+func UserFromRequest(store sessions.Store, r *http.Request) (*User, error) {
+	s, err := store.Get(r, Session)
 	if err != nil {
 		return nil, err
 	}
-	ui, ok := session.Values[UserKey]
+	ui, ok := s.Values[UserKey]
 	if !ok {
 		return nil, nil
 	}
@@ -61,7 +61,7 @@ func UserFromRequest(r *http.Request) (*User, error) {
 	return u, nil
 }
 
-func (u User) saveToSession(w http.ResponseWriter, r *http.Request) error {
+func (u User) saveToSession(store sessions.Store, w http.ResponseWriter, r *http.Request) error {
 	session, err := store.Get(r, Session)
 	if err != nil {
 		return err
@@ -70,7 +70,7 @@ func (u User) saveToSession(w http.ResponseWriter, r *http.Request) error {
 	return session.Save(r, w)
 }
 
-func (u User) removeFromSession(w http.ResponseWriter, r *http.Request) error {
+func (u User) removeFromSession(store sessions.Store, w http.ResponseWriter, r *http.Request) error {
 	session, err := store.Get(r, Session)
 	if err != nil {
 		return err
@@ -97,7 +97,7 @@ func (u *User) insert(db *sql.DB) error {
 }
 
 func (u *User) setPassword(password string) error {
-	ph, err := bcrypt.GenerateFromPassword([]byte(password), 10)
+	ph, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
@@ -113,16 +113,13 @@ func (u *User) changePassword(db *sql.DB, p string) error {
 
 	_, err := db.Exec(
 		"UPDATE users SET password_hash=$1, password_algo=$2 WHERE id=$3",
-		u.ID, u.PasswordHash, u.PasswordAlgo)
+		u.PasswordHash, u.PasswordAlgo, u.ID)
 
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (u User) isCorrectPassword(p string) bool {
-	return bcrypt.CompareHashAndPassword(u.PasswordHash, []byte(p)) != nil
+	return bcrypt.CompareHashAndPassword(u.PasswordHash, []byte(p)) == nil
 }
 
 func init() {

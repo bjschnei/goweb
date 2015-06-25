@@ -2,6 +2,7 @@ package account
 
 import (
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 	"github.com/justinas/alice"
 	"github.com/justinas/nosurf"
 
@@ -16,27 +17,66 @@ type csrfForm interface {
 	setToken(string)
 }
 
-func CreateRoutes(sr *mux.Router, db *sql.DB) error {
+type AccountManager struct {
+	store sessions.Store
+}
+
+func NewAccountManager(s sessions.Store) *AccountManager {
+	return &AccountManager{s}
+}
+
+func (u AccountManager) RequireNoUserMiddleware() func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, err := UserFromRequest(u.store, r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			if u != nil {
+				http.Redirect(w, r, "/", http.StatusFound)
+			} else {
+				h.ServeHTTP(w, r)
+			}
+		})
+	}
+}
+
+func (u AccountManager) RequireUserMiddleware() func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, err := UserFromRequest(u.store, r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			if u == nil {
+				http.Redirect(w, r, "/signup", http.StatusFound)
+			} else {
+				h.ServeHTTP(w, r)
+			}
+		})
+	}
+}
+
+func (am *AccountManager) CreateRoutes(sr *mux.Router, db *sql.DB, store sessions.Store) error {
+
 	sr.Methods("GET").
 		Path("/login").
-		Handler(alice.New(nosurf.NewPure, requireNoUser).ThenFunc(
+		Handler(alice.New(nosurf.NewPure, am.RequireNoUserMiddleware()).ThenFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			templateHandler("login.html", newLoginContext(), w, r)
 		}))
 
 	sr.Methods("POST").
 		Path("/login").
-		Handler(nosurf.New(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		loginHandler(db, w, r)
-	})))
+		Handler(nosurf.New(newLoginHandler(db, store)))
 
 	sr.Methods("GET").
 		Path("/logout").
-		HandlerFunc(logoutHandler)
+		Handler(newLogoutHandler(am.store))
 
 	sr.Methods("GET").
 		Path("/signup").
-		Handler(alice.New(nosurf.NewPure, requireNoUser).ThenFunc(
+		Handler(alice.New(nosurf.NewPure, am.RequireNoUserMiddleware()).ThenFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			templateHandler("signup.html", newSignupContext(), w, r)
 		}))
@@ -49,16 +89,14 @@ func CreateRoutes(sr *mux.Router, db *sql.DB) error {
 
 	sr.Methods("GET").
 		Path("/change_password").
-		Handler(alice.New(nosurf.NewPure, RequireUser).ThenFunc(
+		Handler(alice.New(nosurf.NewPure, am.RequireUserMiddleware()).ThenFunc(
 		func(w http.ResponseWriter, r *http.Request) {
 			templateHandler("change_password.html", newChangePasswordContext(), w, r)
 		}))
 
 	sr.Methods("POST").
 		Path("/change_password").
-		Handler(nosurf.New(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		changePasswordHandler(db, w, r)
-	})))
+		Handler(nosurf.New(newChangePasswordHandler(db, am.store)))
 
 	return nil
 }
@@ -71,41 +109,21 @@ func templateHandler(tmpl string, f csrfForm, w http.ResponseWriter, r *http.Req
 	}
 }
 
-func requireNoUser(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, err := UserFromRequest(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		if u != nil {
-			http.Redirect(w, r, "/", http.StatusFound)
-		} else {
-			h.ServeHTTP(w, r)
-		}
-	})
+type logoutHandler struct {
+	s sessions.Store
 }
 
-func RequireUser(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, err := UserFromRequest(r)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-		if u == nil {
-			http.Redirect(w, r, "/signup", http.StatusFound)
-		} else {
-			h.ServeHTTP(w, r)
-		}
-	})
+func newLogoutHandler(s sessions.Store) http.Handler {
+	return &logoutHandler{s}
 }
 
-func logoutHandler(w http.ResponseWriter, r *http.Request) {
-	u, err := UserFromRequest(r)
+func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	u, err := UserFromRequest(h.s, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 	if u != nil {
-		if err := u.removeFromSession(w, r); err != nil {
+		if err := u.removeFromSession(h.s, w, r); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	}
