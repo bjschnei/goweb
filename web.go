@@ -7,6 +7,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"database/sql"
+	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
@@ -36,6 +37,18 @@ func homepageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func readConfig(filename string) (map[string]string, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	dec := json.NewDecoder(f)
+	m := make(map[string]string)
+	err = dec.Decode(&m)
+	return m, err
+}
+
 func main() {
 
 	log.SetOutput(os.Stderr)
@@ -43,6 +56,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	cfg, err := readConfig("config.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("%v", cfg)
 	am := account.NewAccountManager(store, db)
 	mx := mux.NewRouter()
 	mx.HandleFunc("/", homepageHandler)
