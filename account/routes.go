@@ -19,10 +19,11 @@ type csrfForm interface {
 
 type AccountManager struct {
 	store sessions.Store
+	db    *sql.DB
 }
 
-func NewAccountManager(s sessions.Store) *AccountManager {
-	return &AccountManager{s}
+func NewAccountManager(s sessions.Store, db *sql.DB) *AccountManager {
+	return &AccountManager{s, db}
 }
 
 func (u AccountManager) RequireNoUserMiddleware() func(http.Handler) http.Handler {
@@ -57,7 +58,7 @@ func (u AccountManager) RequireUserMiddleware() func(http.Handler) http.Handler 
 	}
 }
 
-func (am *AccountManager) CreateRoutes(sr *mux.Router, db *sql.DB, store sessions.Store) error {
+func (am *AccountManager) CreateRoutes(sr *mux.Router) error {
 
 	sr.Methods("GET").
 		Path("/login").
@@ -68,7 +69,7 @@ func (am *AccountManager) CreateRoutes(sr *mux.Router, db *sql.DB, store session
 
 	sr.Methods("POST").
 		Path("/login").
-		Handler(nosurf.New(newLoginHandler(db, store)))
+		Handler(nosurf.New(newLoginHandler(am.db, am.store)))
 
 	sr.Methods("GET").
 		Path("/logout").
@@ -84,7 +85,7 @@ func (am *AccountManager) CreateRoutes(sr *mux.Router, db *sql.DB, store session
 	sr.Methods("POST").
 		Path("/signup").
 		Handler(nosurf.New(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		signupHandler(db, w, r)
+		signupHandler(am.db, w, r)
 	})))
 
 	sr.Methods("GET").
@@ -96,7 +97,7 @@ func (am *AccountManager) CreateRoutes(sr *mux.Router, db *sql.DB, store session
 
 	sr.Methods("POST").
 		Path("/change_password").
-		Handler(nosurf.New(newChangePasswordHandler(db, am.store)))
+		Handler(nosurf.New(newChangePasswordHandler(am.db, am.store)))
 
 	return nil
 }

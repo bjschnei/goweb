@@ -43,12 +43,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	am := account.NewAccountManager(store)
+	am := account.NewAccountManager(store, db)
 	mx := mux.NewRouter()
 	mx.HandleFunc("/", homepageHandler)
 
 	asr := mx.PathPrefix("/account").Subrouter()
-	if err := am.CreateRoutes(asr, db, store); err != nil {
+	if err := am.CreateRoutes(asr); err != nil {
 		log.Fatal("unable to create account routes", err)
 	}
 
