@@ -1,14 +1,16 @@
 package account
 
 import (
+	"database/sql"
+	"net/http"
+	"text/template"
+
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	"github.com/justinas/alice"
 	"github.com/justinas/nosurf"
-
-	"database/sql"
-	"html/template"
-	"net/http"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/facebook"
 )
 
 var templates = template.Must(template.ParseGlob("templates/account/*"))
@@ -18,12 +20,29 @@ type csrfForm interface {
 }
 
 type AccountManager struct {
-	store sessions.Store
-	db    *sql.DB
+	store      sessions.Store
+	db         *sql.DB
+	serverAddr string
+	fb         *oAuthFacebook
 }
 
-func NewAccountManager(s sessions.Store, db *sql.DB) *AccountManager {
-	return &AccountManager{s, db}
+type OAuthClientConfig struct {
+	oauth2.Config
+}
+
+func NewFacebookClient(id string, secret string) *OAuthClientConfig {
+	c := oauth2.Config{
+		ClientID:     id,
+		ClientSecret: secret,
+		Scopes:       fbScopes,
+		Endpoint:     facebook.Endpoint,
+	}
+	return &OAuthClientConfig{c}
+}
+
+func NewAccountManager(
+	s sessions.Store, db *sql.DB, dn string, fb *OAuthClientConfig) *AccountManager {
+	return &AccountManager{s, db, dn, newOAuthFacebook(fb.Config, s)}
 }
 
 func (u AccountManager) RequireNoUserMiddleware() func(http.Handler) http.Handler {
@@ -60,16 +79,20 @@ func (u AccountManager) RequireUserMiddleware() func(http.Handler) http.Handler 
 
 func (am *AccountManager) CreateRoutes(sr *mux.Router) error {
 
-	sr.Methods("GET").
+	l := sr.Methods("GET").
 		Path("/login").
-		Handler(alice.New(nosurf.NewPure, am.RequireNoUserMiddleware()).ThenFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			templateHandler("login.html", newLoginContext(), w, r)
-		}))
+		Handler(alice.New(nosurf.NewPure, am.RequireNoUserMiddleware()).Then(
+		newLoginGetHandler(am.db, am.store, am.fb)))
+
+	base, err := l.URL()
+	if err != nil {
+		return err
+	}
+	am.fb.config.RedirectURL = am.serverAddr + base.String() + "fb"
 
 	sr.Methods("POST").
 		Path("/login").
-		Handler(nosurf.New(newLoginHandler(am.db, am.store)))
+		Handler(nosurf.New(newLoginPostHandler(am.db, am.store, am.fb)))
 
 	sr.Methods("GET").
 		Path("/logout").

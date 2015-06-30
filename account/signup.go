@@ -1,12 +1,12 @@
 package account
 
 import (
-	"github.com/gorilla/schema"
-	sqlite "github.com/mattn/go-sqlite3"
-
 	"database/sql"
 	"net/http"
 	"net/mail"
+
+	"github.com/gorilla/schema"
+	sqlite "github.com/mattn/go-sqlite3"
 )
 
 const MIN_PASS_LEN = 4

@@ -1,11 +1,11 @@
 package account
 
 import (
-	"github.com/gorilla/schema"
-	"github.com/gorilla/sessions"
-
 	"database/sql"
 	"net/http"
+
+	"github.com/gorilla/schema"
+	"github.com/gorilla/sessions"
 )
 
 type loginForm struct {
@@ -17,36 +17,54 @@ type loginForm struct {
 type loginContext struct {
 	Form  *loginForm
 	Error string
+	FBURL string
 }
 
-func newLoginContext() *loginContext {
-	return &loginContext{Form: &loginForm{}}
+func newLoginContext(fbURL string) *loginContext {
+	return &loginContext{Form: &loginForm{}, FBURL: fbURL}
 }
 
 func (c *loginContext) setToken(t string) {
 	c.Form.Token = t
 }
 
-type loginHandler struct {
+type loginPostHandler struct {
 	db *sql.DB
 	s  sessions.Store
+	fb *oAuthFacebook
 }
 
-func newLoginHandler(db *sql.DB, s sessions.Store) http.Handler {
-	return &loginHandler{db, s}
+type loginGetHandler struct {
+	db *sql.DB
+	s  sessions.Store
+	fb *oAuthFacebook
 }
 
-func (l loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func newLoginPostHandler(db *sql.DB, s sessions.Store, fb *oAuthFacebook) http.Handler {
+	return &loginPostHandler{db, s, fb}
+}
+
+func newLoginGetHandler(db *sql.DB, s sessions.Store, fb *oAuthFacebook) http.Handler {
+	return &loginGetHandler{db, s, fb}
+}
+
+func (l loginPostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	decoder := schema.NewDecoder()
-	c := newLoginContext()
+	url, err := l.fb.GetLoginURL(w, r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	c := newLoginContext(url)
 	err = decoder.Decode(c.Form, r.PostForm)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	if u, err := loadUserByEmail(l.db, c.Form.Email); err != nil {
@@ -57,11 +75,18 @@ func (l loginHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		executeContextTemplate(w, "login.html", c)
 	} else if err := u.saveToSession(l.s, w, r); err != nil {
 		c.Error = err.Error()
-		executeContextTemplate(w, "login.html", c)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
 		// User logged in, redirect
 		http.Redirect(w, r, "/", http.StatusFound)
+	}
+}
+
+func (l loginGetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if url, err := l.fb.GetLoginURL(w, r); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	} else {
+		templateHandler("login.html", newLoginContext(url), w, r)
 	}
 }
 

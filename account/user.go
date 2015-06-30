@@ -1,14 +1,14 @@
 package account
 
 import (
-	"github.com/gorilla/sessions"
-	"golang.org/x/crypto/bcrypt"
-
 	"database/sql"
 	"encoding/gob"
 	"fmt"
 	"log"
 	"net/http"
+
+	"github.com/gorilla/sessions"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const (
