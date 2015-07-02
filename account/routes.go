@@ -20,8 +20,8 @@ type csrfForm interface {
 }
 
 type AccountManager struct {
-	store      sessions.Store
 	db         *sql.DB
+	store      sessions.Store
 	serverAddr string
 	fb         *oAuthFacebook
 }
@@ -42,7 +42,7 @@ func NewFacebookClient(id string, secret string) *OAuthClientConfig {
 
 func NewAccountManager(
 	s sessions.Store, db *sql.DB, dn string, fb *OAuthClientConfig) *AccountManager {
-	return &AccountManager{s, db, dn, newOAuthFacebook(fb.Config, s)}
+	return &AccountManager{db, s, dn, newOAuthFacebook(db, s, fb.Config)}
 }
 
 func (u AccountManager) RequireNoUserMiddleware() func(http.Handler) http.Handler {
@@ -89,6 +89,10 @@ func (am *AccountManager) CreateRoutes(sr *mux.Router) error {
 		return err
 	}
 	am.fb.config.RedirectURL = am.serverAddr + base.String() + "fb"
+	sr.Methods("GET").
+		Path("/loginfb").
+		Handler(alice.New(am.RequireNoUserMiddleware()).
+		Then(am.fb))
 
 	sr.Methods("POST").
 		Path("/login").

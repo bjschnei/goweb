@@ -2,6 +2,7 @@ package account
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"net/http"
 
 	"github.com/gorilla/sessions"
@@ -17,12 +18,13 @@ var fbScopes []string = []string{
 }
 
 type oAuthFacebook struct {
-	config oauth2.Config
+	db     *sql.DB
 	store  sessions.Store
+	config oauth2.Config
 }
 
-func newOAuthFacebook(config oauth2.Config, store sessions.Store) *oAuthFacebook {
-	return &oAuthFacebook{config, store}
+func newOAuthFacebook(db *sql.DB, store sessions.Store, config oauth2.Config) *oAuthFacebook {
+	return &oAuthFacebook{db, store, config}
 }
 
 func (fb oAuthFacebook) GetLoginURL(w http.ResponseWriter, r *http.Request) (string, error) {
@@ -41,4 +43,8 @@ func (fb oAuthFacebook) GetLoginURL(w http.ResponseWriter, r *http.Request) (str
 	session.Values[sessionState] = state
 	session.Save(r, w)
 	return fb.config.AuthCodeURL(state), nil
+}
+
+func (fb oAuthFacebook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("hello"))
 }

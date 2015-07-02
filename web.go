@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/bjschnei/goweb/account"
+	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	_ "github.com/mattn/go-sqlite3"
@@ -80,7 +81,7 @@ func main() {
 	}
 
 	if port != "80" {
-		addr += ":" + port
+		addr += port
 	}
 
 	am := account.NewAccountManager(store, db, addr,
@@ -92,10 +93,5 @@ func main() {
 	if err := am.CreateRoutes(asr); err != nil {
 		log.Fatal("unable to create account routes", err)
 	}
-
-	s := &http.Server{
-		Addr:    port,
-		Handler: mx,
-	}
-	log.Fatal(s.ListenAndServe())
+	log.Fatal(http.ListenAndServe(port, handlers.CompressHandler(mx)))
 }
