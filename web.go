@@ -15,27 +15,24 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-var store = sessions.NewCookieStore([]byte("todo_loaded_secret"))
-
 var templates = template.Must(template.ParseFiles(
 	"templates/index.html",
 ))
 
-type oauthConfig struct {
-	ID     string
-	Secret string
-}
-
 type config struct {
-	OauthFB    oauthConfig
-	DomainName string
+	OauthFB struct {
+		ID     string
+		Secret string
+	}
+	DomainName   string
+	CookieSecret []byte
 }
 
 type homeContext struct {
 	U *account.User
 }
 
-func homepageHandler(w http.ResponseWriter, r *http.Request) {
+func homepageHandler(w http.ResponseWriter, r *http.Request, store sessions.Store) {
 	u, err := account.UserFromRequest(store, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -84,14 +81,21 @@ func main() {
 		addr += port
 	}
 
+	store := sessions.NewCookieStore(cfg.CookieSecret)
+
 	am := account.NewAccountManager(store, db, addr,
 		account.NewFacebookClient(cfg.OauthFB.ID, cfg.OauthFB.Secret))
 	mx := mux.NewRouter()
-	mx.HandleFunc("/", homepageHandler)
+	mx.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		homepageHandler(w, r, store)
+	})
 
 	asr := mx.PathPrefix("/account").Subrouter()
 	if err := am.CreateRoutes(asr); err != nil {
 		log.Fatal("unable to create account routes", err)
 	}
 	log.Fatal(http.ListenAndServe(port, handlers.CompressHandler(mx)))
+}
+
+func init() {
 }

@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/gob"
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/gorilla/sessions"
@@ -40,7 +39,6 @@ func loadUserByEmail(db *sql.DB, email string) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("user loaded with id %v", u.ID)
 	return u, nil
 }
 
@@ -67,15 +65,6 @@ func (u User) saveToSession(store sessions.Store, w http.ResponseWriter, r *http
 		return err
 	}
 	session.Values[UserKey] = u
-	return session.Save(r, w)
-}
-
-func (u User) removeFromSession(store sessions.Store, w http.ResponseWriter, r *http.Request) error {
-	session, err := store.Get(r, Session)
-	if err != nil {
-		return err
-	}
-	delete(session.Values, UserKey)
 	return session.Save(r, w)
 }
 

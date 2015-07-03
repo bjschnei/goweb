@@ -100,7 +100,11 @@ func (am *AccountManager) CreateRoutes(sr *mux.Router) error {
 
 	sr.Methods("GET").
 		Path("/logout").
-		Handler(newLogoutHandler(am.store))
+		HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Wipe out the cookie
+		http.SetCookie(w, &http.Cookie{Name: Session, MaxAge: -1, Path: "/"})
+		http.Redirect(w, r, "/", http.StatusFound)
+	})
 
 	sr.Methods("GET").
 		Path("/signup").
@@ -135,25 +139,4 @@ func templateHandler(tmpl string, f csrfForm, w http.ResponseWriter, r *http.Req
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-}
-
-type logoutHandler struct {
-	s sessions.Store
-}
-
-func newLogoutHandler(s sessions.Store) http.Handler {
-	return &logoutHandler{s}
-}
-
-func (h *logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	u, err := UserFromRequest(h.s, r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-	if u != nil {
-		if err := u.removeFromSession(h.s, w, r); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	}
-	http.Redirect(w, r, "/", http.StatusFound)
 }
