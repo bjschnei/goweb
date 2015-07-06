@@ -33,7 +33,7 @@ func newUser(email string) *User {
 func loadUserByEmail(db *sql.DB, email string) (*User, error) {
 	u := newUser(email)
 	err := db.QueryRow(
-		"select id, password_hash, password_algo from users where email = ?",
+		"select id, password_hash, password_algo from Users where email = ?",
 		email).
 		Scan(&u.ID, &u.PasswordHash, &u.PasswordAlgo)
 	if err != nil {
@@ -70,7 +70,7 @@ func (u User) saveToSession(store sessions.Store, w http.ResponseWriter, r *http
 
 func (u *User) insert(db *sql.DB) error {
 	r, err := db.Exec(
-		"INSERT INTO users (email, password_hash, password_algo) VALUES ($1, $2, $3)",
+		"INSERT INTO Users (email, password_hash, password_algo) VALUES ($1, $2, $3)",
 		u.Email,
 		u.PasswordHash,
 		u.PasswordAlgo)
@@ -101,7 +101,7 @@ func (u *User) changePassword(db *sql.DB, p string) error {
 	}
 
 	_, err := db.Exec(
-		"UPDATE users SET password_hash=$1, password_algo=$2 WHERE id=$3",
+		"UPDATE Users SET password_hash=$1, password_algo=$2 WHERE id=$3",
 		u.PasswordHash, u.PasswordAlgo, u.ID)
 
 	return err

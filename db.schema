@@ -1,5 +1,5 @@
 
-CREATE TABLE users (
+CREATE TABLE Users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email VARCHAR(320) UNIQUE,
   password_algo VARCHAR(32) NULL,
@@ -8,4 +8,16 @@ CREATE TABLE users (
 );
 
 CREATE INDEX id_index ON users (id);
+
+CREATE TABLE Auth (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  type VARCHAR(32),
+  token VARCHAR(1024),
+  expiration INTEGER,
+
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE UNIQUE INDEX user_id_type ON Auth (user_id, type);
 
