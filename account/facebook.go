@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/sessions"
 	"golang.org/x/oauth2"
@@ -79,24 +81,31 @@ func (fb oAuthFacebook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Token expiry %v", tok.Expiry)
 
 	client := fb.config.Client(oauth2.NoContext, tok)
-	err = fb.getUserDetails(client)
+	u, err := fb.getFacebookUser(client, tok)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Write([]byte(tok.Type()))
+	w.Write([]byte(u.authType))
 }
 
-func (fb oAuthFacebook) getUserDetails(client *http.Client) error {
+func (fb oAuthFacebook) getFacebookUser(client *http.Client, tok *oauth2.Token) (*authUser, error) {
 	r, err := client.Get("https://graph.facebook.com/me")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	log.Printf("got response %v", r)
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	log.Printf("got response body %v", string(body))
-	return nil
+
+	m := make(map[string]interface{})
+	log.Printf("body %v", string(body))
+	err = json.Unmarshal(body, &m)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := strconv.ParseInt(m["id"].(string), 10, 64)
+	return getOrInsertAuthUser(fb.db, id, "facebook", tok.AccessToken, m["email"].(string), tok.Expiry)
 }
