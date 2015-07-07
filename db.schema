@@ -12,6 +12,7 @@ CREATE INDEX id_index ON users (id);
 CREATE TABLE Auth (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER,
+  auth_id INTEGER,
   type VARCHAR(32),
   token VARCHAR(1024),
   expiration INTEGER,

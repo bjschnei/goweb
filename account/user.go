@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/gob"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -29,6 +30,7 @@ type User struct {
 
 type authUser struct {
 	id              int64
+	authID          int64
 	user            *User
 	authType        string
 	token           string
@@ -39,9 +41,10 @@ func newUser(email string) *User {
 	return &User{Email: email}
 }
 
-func newAuthUser(user *User, authType, token string, tokenExpiration time.Time) *authUser {
+func newAuthUser(user *User, authID int64, authType, token string, tokenExpiration time.Time) *authUser {
 	return &authUser{
 		user:            user,
+		authID:          authID,
 		authType:        authType,
 		token:           token,
 		tokenExpiration: tokenExpiration}
@@ -50,7 +53,7 @@ func newAuthUser(user *User, authType, token string, tokenExpiration time.Time) 
 func loadUserByEmail(db *sql.DB, email string) (*User, error) {
 	u := newUser(email)
 	err := db.QueryRow(
-		"select id, password_hash, password_algo from Users where email = ?",
+		"SELECT id, password_hash, password_algo FROM Users WHERE email = ?",
 		email).
 		Scan(&u.ID, &u.PasswordHash, &u.PasswordAlgo)
 	if err != nil {
@@ -59,12 +62,42 @@ func loadUserByEmail(db *sql.DB, email string) (*User, error) {
 	return u, nil
 }
 
-func loadUserByAuth(db *sql.DB, userID int64, authType string) (*authUser, error) {
-	// TODO: implement
-	return nil, nil
+func loadUserByID(db *sql.DB, id int64) (*User, error) {
+	u := &User{}
+	u.ID = id
+	err := db.QueryRow(
+		"SELECT email, password_hash, password_algo FROM Users WHERE id = ?",
+		id).
+		Scan(&u.Email, &u.PasswordHash, &u.PasswordAlgo)
+	if err != nil {
+		return nil, err
+	}
+	return u, nil
 }
 
-func createUserByAuth(db *sql.DB, userID int64, authType, token, email string,
+func loadUserByAuth(db *sql.DB, userID int64, authType string) (*authUser, error) {
+	var id int64
+	var authID int64
+	var token string
+	var expiration int64
+	err := db.QueryRow(
+		"SELECT id, auth_id, token, expiration FROM Auth WHERE user_id = ? AND type = ?",
+		userID, authType).Scan(&id, &authID, &token, &expiration)
+
+	if err != nil {
+		log.Printf("failed to get auth row user_id = %v type = %v", userID, authType)
+		return nil, err
+	}
+	u, err := loadUserByID(db, userID)
+	if err != nil {
+		return nil, err
+	}
+	au := newAuthUser(u, authID, authType, token, time.Unix(expiration, 0))
+	au.id = id
+	return au, nil
+}
+
+func createUserByAuth(db *sql.DB, authID int64, authType, token, email string,
 	tokenExpiration time.Time) (*authUser, error) {
 	tx, err := db.Begin()
 	if err != nil {
@@ -80,7 +113,7 @@ func createUserByAuth(db *sql.DB, userID int64, authType, token, email string,
 		}
 	}
 
-	au := newAuthUser(u, authType, token, tokenExpiration)
+	au := newAuthUser(u, authID, authType, token, tokenExpiration)
 	err = au.insert(db)
 	if err != nil {
 		return nil, err
@@ -95,8 +128,10 @@ func createUserByAuth(db *sql.DB, userID int64, authType, token, email string,
 
 func getOrInsertAuthUser(db *sql.DB, userID int64, authType, token, email string,
 	tokenExpiration time.Time) (*authUser, error) {
-	if u, _ := loadUserByAuth(db, userID, authType); u != nil {
+	if u, err := loadUserByAuth(db, userID, authType); u != nil {
 		return u, nil
+	} else {
+		log.Printf("couldn't load user by auth: %v", err)
 	}
 	u, err := createUserByAuth(db, userID, authType, token, email, tokenExpiration)
 	if err != nil {
@@ -124,11 +159,12 @@ func UserFromRequest(store sessions.Store, r *http.Request) (*User, error) {
 
 func (au *authUser) insert(db *sql.DB) error {
 	r, err := db.Exec(
-		"INSERT INTO Auth (user_id, type, token, expiration) VALUES ($1, $2, $3, $4)",
+		"INSERT INTO Auth (user_id, auth_id, type, token, expiration) VALUES ($1, $2, $3, $4, $5)",
 		au.user.ID,
+		au.authID,
 		au.authType,
 		au.token,
-		au.tokenExpiration)
+		au.tokenExpiration.Unix())
 	if err != nil {
 		return err
 	}
