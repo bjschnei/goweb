@@ -75,14 +75,14 @@ func loadUserByID(db *sql.DB, id int64) (*User, error) {
 	return u, nil
 }
 
-func loadUserByAuth(db *sql.DB, userID int64, authType string) (*authUser, error) {
+func loadUserByAuth(db *sql.DB, authID int64, authType string) (*authUser, error) {
 	var id int64
-	var authID int64
+	var userID int64
 	var token string
 	var expiration int64
 	err := db.QueryRow(
-		"SELECT id, auth_id, token, expiration FROM Auth WHERE user_id = ? AND type = ?",
-		userID, authType).Scan(&id, &authID, &token, &expiration)
+		"SELECT id, user_id, token, expiration FROM Auth WHERE auth_id = ? AND type = ?",
+		authID, authType).Scan(&id, &userID, &token, &expiration)
 
 	if err != nil {
 		log.Printf("failed to get auth row user_id = %v type = %v", userID, authType)
@@ -126,14 +126,14 @@ func createUserByAuth(db *sql.DB, authID int64, authType, token, email string,
 	return au, nil
 }
 
-func getOrInsertAuthUser(db *sql.DB, userID int64, authType, token, email string,
+func getOrInsertAuthUser(db *sql.DB, authID int64, authType, token, email string,
 	tokenExpiration time.Time) (*authUser, error) {
-	if u, err := loadUserByAuth(db, userID, authType); u != nil {
+	if u, err := loadUserByAuth(db, authID, authType); u != nil {
 		return u, nil
 	} else {
 		log.Printf("couldn't load user by auth: %v", err)
 	}
-	u, err := createUserByAuth(db, userID, authType, token, email, tokenExpiration)
+	u, err := createUserByAuth(db, authID, authType, token, email, tokenExpiration)
 	if err != nil {
 		return nil, err
 	}
