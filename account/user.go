@@ -109,6 +109,7 @@ func createUserByAuth(db *sql.DB, authID int64, authType, token, email string,
 		u = newUser(email)
 		err = u.insert(db)
 		if err != nil {
+			tx.Rollback()
 			return nil, err
 		}
 	}
@@ -116,6 +117,7 @@ func createUserByAuth(db *sql.DB, authID int64, authType, token, email string,
 	au := newAuthUser(u, authID, authType, token, tokenExpiration)
 	err = au.insert(db)
 	if err != nil {
+		tx.Rollback()
 		return nil, err
 	}
 
@@ -128,16 +130,10 @@ func createUserByAuth(db *sql.DB, authID int64, authType, token, email string,
 
 func getOrInsertAuthUser(db *sql.DB, authID int64, authType, token, email string,
 	tokenExpiration time.Time) (*authUser, error) {
-	if u, err := loadUserByAuth(db, authID, authType); u != nil {
+	if u, err := loadUserByAuth(db, authID, authType); err == nil {
 		return u, nil
-	} else {
-		log.Printf("couldn't load user by auth: %v", err)
 	}
-	u, err := createUserByAuth(db, authID, authType, token, email, tokenExpiration)
-	if err != nil {
-		return nil, err
-	}
-	return u, nil
+	return createUserByAuth(db, authID, authType, token, email, tokenExpiration)
 }
 
 func UserFromRequest(store sessions.Store, r *http.Request) (*User, error) {
@@ -195,10 +191,7 @@ func (u *User) insert(db *sql.DB) error {
 		return err
 	}
 	u.ID, err = r.LastInsertId()
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (u *User) setPassword(password string) error {
@@ -224,6 +217,10 @@ func (u *User) changePassword(db *sql.DB, p string) error {
 }
 
 func (u User) isCorrectPassword(p string) bool {
+	// For auth users with no set password, do not allow empty string comparison.
+	if len(u.PasswordHash) == 0 {
+		return false
+	}
 	return bcrypt.CompareHashAndPassword(u.PasswordHash, []byte(p)) == nil
 }
 
