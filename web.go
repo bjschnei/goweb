@@ -97,5 +97,3 @@ func main() {
 	log.Fatal(http.ListenAndServe(port, handlers.CompressHandler(mx)))
 }
 
-func init() {
-}
