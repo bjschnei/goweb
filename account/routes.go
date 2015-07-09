@@ -13,7 +13,9 @@ import (
 	"golang.org/x/oauth2/facebook"
 )
 
-var templates = template.Must(template.ParseGlob("templates/account/*"))
+var (
+	templates *template.Template
+)
 
 type csrfForm interface {
 	setToken(string)
@@ -139,4 +141,10 @@ func templateHandler(tmpl string, f csrfForm, w http.ResponseWriter, r *http.Req
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func InitializeTemplates(root string) error {
+	var err error
+	templates, err = template.ParseGlob(root + "templates/account/*")
+	return err
 }

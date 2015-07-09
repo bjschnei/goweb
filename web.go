@@ -69,6 +69,16 @@ func main() {
 		log.Fatal(err)
 	}
 
+	wd, err := os.Getwd()
+	if err != nil {
+		log.Fatal(err)
+	}
+	wd = wd + string(os.PathSeparator)
+
+	if err = account.InitializeTemplates(wd); err != nil {
+		log.Fatal(err)
+	}
+
 	addr := "http://" + cfg.DomainName
 	port := os.Getenv("PORT")
 	if len(port) == 0 {
@@ -96,4 +106,3 @@ func main() {
 	}
 	log.Fatal(http.ListenAndServe(port, handlers.CompressHandler(mx)))
 }
-
