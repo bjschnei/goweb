@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/gob"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -85,7 +84,6 @@ func loadUserByAuth(db *sql.DB, authID int64, authType string) (*authUser, error
 		authID, authType).Scan(&id, &userID, &token, &expiration)
 
 	if err != nil {
-		log.Printf("failed to get auth row user_id = %v type = %v", userID, authType)
 		return nil, err
 	}
 	u, err := loadUserByID(db, userID)

@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strconv"
 
@@ -78,7 +77,6 @@ func (fb oAuthFacebook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to exchange for token", http.StatusBadRequest)
 		return
 	}
-	log.Printf("Token expiry %v", tok.Expiry)
 
 	client := fb.config.Client(oauth2.NoContext, tok)
 	u, err := fb.getFacebookUser(client, tok)
@@ -101,7 +99,6 @@ func (fb oAuthFacebook) getFacebookUser(client *http.Client, tok *oauth2.Token) 
 	}
 
 	m := make(map[string]interface{})
-	log.Printf("body %v", string(body))
 	err = json.Unmarshal(body, &m)
 	if err != nil {
 		return nil, err
