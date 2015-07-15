@@ -6,10 +6,16 @@ import (
 	"net/mail"
 
 	"github.com/gorilla/schema"
+	"github.com/gorilla/sessions"
 	sqlite "github.com/mattn/go-sqlite3"
 )
 
 const MIN_PASS_LEN = 4
+
+type signupPostHandler struct {
+	db *sql.DB
+	s  sessions.Store
+}
 
 type signupForm struct {
 	Email     string
@@ -22,6 +28,10 @@ type signupForm struct {
 type signupContext struct {
 	PassLen int
 	Form    *signupForm
+}
+
+func newSignupPostHandler(db *sql.DB, s sessions.Store) *signupPostHandler {
+	return &signupPostHandler{db, s}
 }
 
 func newSignupForm() *signupForm {
@@ -38,7 +48,7 @@ func (c *signupContext) setToken(t string) {
 	c.Form.Token = t
 }
 
-func signupHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+func (su signupPostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -61,7 +71,8 @@ func signupHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := c.Form.createUser(db); err != nil {
+	u, err := c.Form.createUser(su.db)
+	if err != nil {
 		if isExistingUserError(err) {
 			c.Form.Errors["Email"] = "User already exists"
 			if err := templates.ExecuteTemplate(w, "signup.html", c); err != nil {
@@ -73,7 +84,10 @@ func signupHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte("Mazl Tov!"))
+	if err = u.saveToSession(su.s, w, r); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 func isExistingUserError(err error) bool {

@@ -3,6 +3,8 @@ package account
 import (
 	"database/sql"
 	"net/http"
+	"net/url"
+	"strings"
 	"text/template"
 
 	"github.com/gorilla/mux"
@@ -25,6 +27,7 @@ type AccountManager struct {
 	db         *sql.DB
 	store      sessions.Store
 	serverAddr string
+	baseURL    *url.URL
 	fb         *oAuthFacebook
 }
 
@@ -44,7 +47,12 @@ func NewFacebookClient(id string, secret string) *OAuthClientConfig {
 
 func NewAccountManager(
 	s sessions.Store, db *sql.DB, dn string, fb *OAuthClientConfig) *AccountManager {
-	return &AccountManager{db, s, dn, newOAuthFacebook(db, s, fb.Config)}
+	return &AccountManager{
+		db:         db,
+		store:      s,
+		serverAddr: dn,
+		baseURL:    nil,
+		fb:         newOAuthFacebook(db, s, fb.Config)}
 }
 
 func (u AccountManager) RequireNoUserMiddleware() func(http.Handler) http.Handler {
@@ -63,15 +71,15 @@ func (u AccountManager) RequireNoUserMiddleware() func(http.Handler) http.Handle
 	}
 }
 
-func (u AccountManager) RequireUserMiddleware() func(http.Handler) http.Handler {
+func (am AccountManager) RequireUserMiddleware() func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			u, err := UserFromRequest(u.store, r)
+			u, err := UserFromRequest(am.store, r)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 			}
 			if u == nil {
-				http.Redirect(w, r, "/signup", http.StatusFound)
+				http.Redirect(w, r, am.baseURL.String()+"/login", http.StatusFound)
 			} else {
 				h.ServeHTTP(w, r)
 			}
@@ -86,11 +94,16 @@ func (am *AccountManager) CreateRoutes(sr *mux.Router) error {
 		Handler(alice.New(nosurf.NewPure, am.RequireNoUserMiddleware()).Then(
 		newLoginGetHandler(am.db, am.store, am.fb)))
 
-	base, err := l.URL()
+	b, err := l.URL()
 	if err != nil {
 		return err
 	}
-	am.fb.config.RedirectURL = am.serverAddr + base.String() + "fb"
+	am.baseURL, err = url.Parse(strings.TrimSuffix(b.Path, "/login"))
+	if err != nil {
+		return err
+	}
+
+	am.fb.config.RedirectURL = am.serverAddr + am.baseURL.Path + "/loginfb"
 	sr.Methods("GET").
 		Path("/loginfb").
 		Handler(alice.New(am.RequireNoUserMiddleware()).
@@ -117,9 +130,7 @@ func (am *AccountManager) CreateRoutes(sr *mux.Router) error {
 
 	sr.Methods("POST").
 		Path("/signup").
-		Handler(nosurf.New(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		signupHandler(am.db, w, r)
-	})))
+		Handler(nosurf.New(newSignupPostHandler(am.db, am.store)))
 
 	sr.Methods("GET").
 		Path("/change_password").
