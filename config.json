@@ -1,0 +1,8 @@
+{
+  "oauthFB": {
+    "id": "YOURID",
+    "secret": "YOURSECRET"
+  },
+  "domainName": "localhost",
+  "cookieSecret": "RANDOMSTRING"
+}

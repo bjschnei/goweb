@@ -31,7 +31,7 @@ func TestUserPassword(t *testing.T) {
 	}
 }
 
-func TestSaveUser(t *testing.T) {
+func TestSaveAndLoadUser(t *testing.T) {
 	db, err := setupDB()
 	if err != nil {
 		t.Fatal("Failed to setup db schema %v", err)
@@ -44,6 +44,20 @@ func TestSaveUser(t *testing.T) {
 	}
 	if u.ID != 1 {
 		t.Errorf("Failed to set user id, expected 1 got %v", u.ID)
+	}
+
+	u2, err := loadUserByEmail(db, "wrong@email.com")
+	if err == nil {
+		t.Errorf("Expected to get an error but got user %v", u2)
+	}
+
+	u2, err = loadUserByEmail(db, u.Email)
+	if err != nil {
+		t.Fatalf("Expected to get a user, got %v", err)
+	}
+
+	if u.Email != u2.Email || u.ID != u2.ID {
+		t.Fatalf("Got wrong user, expected %v got %v", u, u2)
 	}
 }
 

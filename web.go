@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"text/template"
 
 	"github.com/bjschnei/goweb/account"
@@ -13,11 +14,18 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/namsral/flag"
 )
 
-var templates = template.Must(template.ParseFiles(
-	"templates/index.html",
-))
+var (
+	templates = template.Must(template.ParseFiles(
+		"templates/index.html",
+	))
+
+	configFile = flag.String("config", "config.json",
+		"file containing configuration parameters in json")
+	port = flag.Int("port", 80, "Port web server listens on")
+)
 
 type config struct {
 	OauthFB struct {
@@ -58,13 +66,15 @@ func readConfig(filename string) (*config, error) {
 }
 
 func main() {
+	flag.Parse()
 	log.SetOutput(os.Stderr)
+	log.Printf("Using port %v and config file %v", *port, *configFile)
 	db, err := sql.Open("sqlite3", "web.db")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	cfg, err := readConfig("config.json")
+	cfg, err := readConfig(*configFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -80,15 +90,8 @@ func main() {
 	}
 
 	addr := "http://" + cfg.DomainName
-	port := os.Getenv("PORT")
-	if len(port) == 0 {
-		port = ":8080"
-	} else {
-		port = ":" + port
-	}
-
-	if port != "80" {
-		addr += port
+	if *port != 80 {
+		addr += ":" + strconv.Itoa(*port)
 	}
 
 	store := sessions.NewCookieStore(cfg.CookieSecret)
@@ -104,5 +107,5 @@ func main() {
 	if err := am.CreateRoutes(asr); err != nil {
 		log.Fatal("unable to create account routes", err)
 	}
-	log.Fatal(http.ListenAndServe(port, handlers.CompressHandler(mx)))
+	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(*port), handlers.CompressHandler(mx)))
 }
