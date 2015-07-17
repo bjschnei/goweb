@@ -87,7 +87,7 @@ func (su signupPostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err = u.saveToSession(su.s, w, r); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	http.Redirect(w, r, "/", http.StatusFound)
+	redirectAfterLogin(su.s, w, r)
 }
 
 func isExistingUserError(err error) bool {

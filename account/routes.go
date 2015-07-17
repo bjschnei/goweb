@@ -2,6 +2,7 @@ package account
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -77,13 +78,51 @@ func (am AccountManager) RequireUserMiddleware() func(http.Handler) http.Handler
 			u, err := UserFromRequest(am.store, r)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
 			}
 			if u == nil {
+				if err := am.storeNext(w, r); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 				http.Redirect(w, r, am.baseURL.String()+"/login", http.StatusFound)
-			} else {
-				h.ServeHTTP(w, r)
+				return
 			}
+			h.ServeHTTP(w, r)
 		})
+	}
+}
+
+func (am AccountManager) storeNext(w http.ResponseWriter, r *http.Request) error {
+	s, err := am.store.Get(r, Session)
+	if err != nil {
+		return err
+	}
+	s.Values["postLoginPath"] = r.URL.Path
+	return s.Save(r, w)
+}
+
+func redirectAfterLogin(store sessions.Store, w http.ResponseWriter, r *http.Request) {
+	s, err := store.Get(r, Session)
+	if err != nil {
+		log.Print("unable to get request session, redirecting to homepage")
+		http.Redirect(w, r, "/", http.StatusFound)
+	}
+	p, ok := s.Values["postLoginPath"]
+	if ok {
+		ps, ok := p.(string)
+		if !ok {
+			log.Print("postLoginPath is not a string, redirecting to homepage")
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, ps, http.StatusFound)
+		delete(s.Values, "postLoginPath")
+		if err := s.Save(r, w); err != nil {
+			log.Print("Unable to remove postLoginPath from session")
+		}
+	} else {
+		http.Redirect(w, r, "/", http.StatusFound)
 	}
 }
 

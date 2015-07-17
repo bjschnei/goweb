@@ -85,7 +85,7 @@ func (fb oAuthFacebook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.user.saveToSession(fb.store, w, r)
-	http.Redirect(w, r, "/", http.StatusFound)
+	redirectAfterLogin(fb.store, w, r)
 }
 
 func (fb oAuthFacebook) getFacebookUser(client *http.Client, tok *oauth2.Token) (*authUser, error) {

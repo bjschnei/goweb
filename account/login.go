@@ -77,8 +77,7 @@ func (l loginPostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		c.Error = err.Error()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	} else {
-		// User logged in, redirect
-		http.Redirect(w, r, "/", http.StatusFound)
+		redirectAfterLogin(l.s, w, r)
 	}
 }
 
