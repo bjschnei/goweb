@@ -173,14 +173,12 @@ func (am *AccountManager) CreateRoutes(sr *mux.Router) error {
 
 	sr.Methods("GET").
 		Path("/change_password").
-		Handler(alice.New(nosurf.NewPure, am.RequireUserMiddleware()).ThenFunc(
-		func(w http.ResponseWriter, r *http.Request) {
-			templateHandler("change_password.html", newChangePasswordContext(), w, r)
-		}))
+		Handler(alice.New(nosurf.NewPure, am.RequireUserMiddleware()).Then(
+			newChangePasswordGetHandler(am.store)))
 
 	sr.Methods("POST").
 		Path("/change_password").
-		Handler(nosurf.New(newChangePasswordHandler(am.db, am.store)))
+		Handler(nosurf.New(newChangePasswordPostHandler(am.db, am.store)))
 
 	return nil
 }

@@ -8,9 +8,13 @@ import (
 	"github.com/gorilla/sessions"
 )
 
-type changePasswordHandler struct {
+type changePasswordPostHandler struct {
 	db *sql.DB
 	s  sessions.Store
+}
+
+type changePasswordGetHandler struct {
+	s sessions.Store
 }
 
 type ChangePasswordForm struct {
@@ -22,39 +26,56 @@ type ChangePasswordForm struct {
 
 type changePasswordContext struct {
 	Form    *ChangePasswordForm
+	HasOldPassword bool
 	Error   string
 	Message string
 }
 
-func newChangePasswordHandler(db *sql.DB, s sessions.Store) *changePasswordHandler {
-	return &changePasswordHandler{db, s}
+func newChangePasswordPostHandler(db *sql.DB, s sessions.Store) *changePasswordPostHandler {
+	return &changePasswordPostHandler{db, s}
 }
 
-func newChangePasswordContext() *changePasswordContext {
-	return &changePasswordContext{Form: &ChangePasswordForm{}}
+func newChangePasswordGetHandler(s sessions.Store) *changePasswordGetHandler {
+	return &changePasswordGetHandler{s}
+}
+
+func newChangePasswordContext(u *User) *changePasswordContext {
+	return &changePasswordContext{Form: &ChangePasswordForm{},
+																HasOldPassword: len(u.PasswordHash) != 0}
 }
 
 func (c *changePasswordContext) setToken(t string) {
 	c.Form.Token = t
 }
 
-func (h changePasswordHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h changePasswordGetHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	u, err := UserFromRequest(h.s, r)
+	if err != nil || u == nil {
+		http.Error(w, "user not logged in", http.StatusUnauthorized)
+		return
+	}
+	templateHandler("change_password.html", newChangePasswordContext(u), w, r)
+}
+
+func (h changePasswordPostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	decoder := schema.NewDecoder()
-	c := newChangePasswordContext()
-	err = decoder.Decode(c.Form, r.PostForm)
+	u, err := UserFromRequest(h.s, r)
+	if err != nil || u == nil {
+		http.Error(w, "user not logged in", http.StatusUnauthorized)
+		return
+	}
+
+	c := newChangePasswordContext(u)
+	err = schema.NewDecoder().Decode(c.Form, r.PostForm)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	if u, err := UserFromRequest(h.s, r); err != nil || u == nil {
-		http.Error(w, "user not logged in", http.StatusUnauthorized)
-		return
-	} else if !u.isCorrectPassword(c.Form.OldPassword) {
+	if c.HasOldPassword && !u.isCorrectPassword(c.Form.OldPassword) {
 		c.Error = "Incorrect old password"
 	} else if len(c.Form.NewPassword) < MIN_PASS_LEN {
 		c.Error = "Passwords is too short"
@@ -70,5 +91,8 @@ func (h changePasswordHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		c.Message = "Password changed"
 	}
 
-	executeContextTemplate(w, "change_password.html", c)
+  nc := newChangePasswordContext(u)
+  nc.Error = c.Error
+  nc.Message = c.Message
+	templateHandler("change_password.html", nc, w, r)
 }
