@@ -96,3 +96,19 @@ func (h changePasswordPostHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
   nc.Message = c.Message
 	templateHandler("change_password.html", nc, w, r)
 }
+
+func (h changePasswordPostHandler) updatePassword(
+	c changePasswordContext, u *User, w http.ResponseWriter, r *http.Request) (passwordError string, internalError error) {
+  if c.HasOldPassword && !u.isCorrectPassword(c.Form.OldPassword) {
+		passwordError = "Incorrect old password"
+	} else if len(c.Form.NewPassword) < MIN_PASS_LEN {
+		passwordError = "Passwords is too short"
+	} else if c.Form.ConfirmNewPassword != c.Form.NewPassword {
+		passwordError = "New password doesn't match confirmation"
+	} else if err := u.changePassword(h.db, c.Form.NewPassword); err != nil {
+		return passwordError, err
+	} else if err := u.saveToSession(h.s, w, r); err != nil {
+		return passwordError, err
+	}
+	return passwordError, nil
+}
