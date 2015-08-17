@@ -70,9 +70,14 @@ func (l loginPostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if u, err := loadUserByEmail(l.db, c.Form.Email); err != nil {
 		c.Error = "Invalid username/password"
 		executeContextTemplate(w, "login.html", c)
-	} else if !u.isCorrectPassword(c.Form.Password) {
-		c.Error = "Invalid username/password"
-		executeContextTemplate(w, "login.html", c)
+	} else if cp, err := u.isCorrectPassword(l.db, c.Form.Password); !cp || err != nil {
+		if err != nil {
+		  http.Error(w, err.Error(), http.StatusInternalServerError)
+		  return
+	  } else {
+		  c.Error = "Invalid username/password"
+		  executeContextTemplate(w, "login.html", c)
+		}
 	} else if err := u.saveToSession(l.s, w, r); err != nil {
 		c.Error = err.Error()
 		http.Error(w, err.Error(), http.StatusInternalServerError)

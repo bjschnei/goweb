@@ -174,7 +174,7 @@ func (am *AccountManager) CreateRoutes(sr *mux.Router) error {
 	sr.Methods("GET").
 		Path("/change_password").
 		Handler(alice.New(nosurf.NewPure, am.RequireUserMiddleware()).Then(
-			newChangePasswordGetHandler(am.store)))
+		newChangePasswordGetHandler(am.db, am.store)))
 
 	sr.Methods("POST").
 		Path("/change_password").

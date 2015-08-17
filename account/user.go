@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/gob"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -21,10 +22,11 @@ const (
 // loading user from session sets field to false and fields lazy loaded
 // from db when requested.
 type User struct {
-	ID           int64
-	Email        string
-	PasswordHash []byte
-	PasswordAlgo string
+	ID               int64
+	Email            string
+	passwordHash     []byte
+	passwordAlgo     string
+	isPasswordLoaded bool
 }
 
 type authUser struct {
@@ -54,10 +56,11 @@ func loadUserByEmail(db *sql.DB, email string) (*User, error) {
 	err := db.QueryRow(
 		"SELECT id, password_hash, password_algo FROM Users WHERE email = ?",
 		email).
-		Scan(&u.ID, &u.PasswordHash, &u.PasswordAlgo)
+		Scan(&u.ID, &u.passwordHash, &u.passwordAlgo)
 	if err != nil {
 		return nil, err
 	}
+	u.isPasswordLoaded = true
 	return u, nil
 }
 
@@ -67,10 +70,11 @@ func loadUserByID(db *sql.DB, id int64) (*User, error) {
 	err := db.QueryRow(
 		"SELECT email, password_hash, password_algo FROM Users WHERE id = ?",
 		id).
-		Scan(&u.Email, &u.PasswordHash, &u.PasswordAlgo)
+		Scan(&u.Email, &u.passwordHash, &u.passwordAlgo)
 	if err != nil {
 		return nil, err
 	}
+	u.isPasswordLoaded = true
 	return u, nil
 }
 
@@ -148,6 +152,7 @@ func UserFromRequest(store sessions.Store, r *http.Request) (*User, error) {
 	if !ok {
 		return nil, fmt.Errorf("user object not stored in user key.  got %v", ui)
 	}
+	u.isPasswordLoaded = false
 	return u, nil
 }
 
@@ -182,8 +187,8 @@ func (u *User) insert(db *sql.DB) error {
 	r, err := db.Exec(
 		"INSERT INTO Users (email, password_hash, password_algo) VALUES ($1, $2, $3)",
 		u.Email,
-		u.PasswordHash,
-		u.PasswordAlgo)
+		u.passwordHash,
+		u.passwordAlgo)
 
 	if err != nil {
 		return err
@@ -197,8 +202,9 @@ func (u *User) setPassword(password string) error {
 	if err != nil {
 		return err
 	}
-	u.PasswordHash = ph
-	u.PasswordAlgo = "BCRYPT"
+	u.passwordHash = ph
+	u.passwordAlgo = "BCRYPT"
+	u.isPasswordLoaded = true
 	return nil
 }
 
@@ -209,17 +215,45 @@ func (u *User) changePassword(db *sql.DB, p string) error {
 
 	_, err := db.Exec(
 		"UPDATE Users SET password_hash=$1, password_algo=$2 WHERE id=$3",
-		u.PasswordHash, u.PasswordAlgo, u.ID)
+		u.passwordHash, u.passwordAlgo, u.ID)
 
 	return err
 }
 
-func (u User) isCorrectPassword(p string) bool {
+func (u *User) isCorrectPassword(db *sql.DB, p string) (bool, error) {
 	// For auth users with no set password, do not allow empty string comparison.
-	if len(u.PasswordHash) == 0 {
-		return false
+	hp, err := u.HasPassword(db)
+	log.Printf("Has password %v %v", hp, err)
+	if err != nil {
+		return false, err
 	}
-	return bcrypt.CompareHashAndPassword(u.PasswordHash, []byte(p)) == nil
+	if !hp {
+		return false, nil
+	}
+	return bcrypt.CompareHashAndPassword(u.passwordHash, []byte(p)) == nil, nil
+}
+
+func (u *User) loadPassword(db *sql.DB) error {
+	err := db.QueryRow(
+		"SELECT password_hash, password_algo FROM Users WHERE id = ?", u.ID).
+		Scan(&u.passwordHash, &u.passwordAlgo)
+	if err != nil {
+		return err
+	}
+	u.isPasswordLoaded = true
+	return nil
+}
+
+func (u *User) HasPassword(db *sql.DB) (bool, error) {
+	if !u.isPasswordLoaded {
+		if err := u.loadPassword(db); err != nil {
+			return false, err
+		}
+	}
+	if len(u.passwordHash) == 0 {
+		return false, nil
+	}
+	return true, nil
 }
 
 func init() {

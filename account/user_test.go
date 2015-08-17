@@ -18,15 +18,16 @@ func TestSchema(t *testing.T) {
 
 func TestUserPassword(t *testing.T) {
 	u := newUser("some.email.com")
-	if u.isCorrectPassword("") {
+	u.isPasswordLoaded = true
+	if c, _ := u.isCorrectPassword(nil, ""); c {
 		t.Error("Expected no password to be incorrect")
 	}
 	u.setPassword("foobar")
-	if u.isCorrectPassword("bar") {
+	if c, _ := u.isCorrectPassword(nil, "bar"); c {
 		t.Error("Expected incorrect password to fail")
 	}
 
-	if !u.isCorrectPassword("foobar") {
+	if c, _ := u.isCorrectPassword(nil, "foobar"); !c {
 		t.Error("Expected correct password to pass")
 	}
 }

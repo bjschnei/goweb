@@ -14,7 +14,8 @@ type changePasswordPostHandler struct {
 }
 
 type changePasswordGetHandler struct {
-	s sessions.Store
+	db *sql.DB
+	s  sessions.Store
 }
 
 type ChangePasswordForm struct {
@@ -25,23 +26,27 @@ type ChangePasswordForm struct {
 }
 
 type changePasswordContext struct {
-	Form    *ChangePasswordForm
+	Form           *ChangePasswordForm
 	HasOldPassword bool
-	Error   string
-	Message string
+	Error          string
+	Message        string
 }
 
 func newChangePasswordPostHandler(db *sql.DB, s sessions.Store) *changePasswordPostHandler {
 	return &changePasswordPostHandler{db, s}
 }
 
-func newChangePasswordGetHandler(s sessions.Store) *changePasswordGetHandler {
-	return &changePasswordGetHandler{s}
+func newChangePasswordGetHandler(db *sql.DB, s sessions.Store) *changePasswordGetHandler {
+	return &changePasswordGetHandler{db, s}
 }
 
-func newChangePasswordContext(u *User) *changePasswordContext {
+func newChangePasswordContext(db *sql.DB, u *User) (*changePasswordContext, error) {
+	hp, err := u.HasPassword(db)
+	if err != nil {
+		return nil, err
+	}
 	return &changePasswordContext{Form: &ChangePasswordForm{},
-																HasOldPassword: len(u.PasswordHash) != 0}
+		HasOldPassword: hp}, nil
 }
 
 func (c *changePasswordContext) setToken(t string) {
@@ -54,7 +59,11 @@ func (h changePasswordGetHandler) ServeHTTP(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "user not logged in", http.StatusUnauthorized)
 		return
 	}
-	templateHandler("change_password.html", newChangePasswordContext(u), w, r)
+	c, err := newChangePasswordContext(h.db, u)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+	templateHandler("change_password.html", c, w, r)
 }
 
 func (h changePasswordPostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -69,46 +78,61 @@ func (h changePasswordPostHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	c := newChangePasswordContext(u)
-	err = schema.NewDecoder().Decode(c.Form, r.PostForm)
+	c, err := newChangePasswordContext(h.db, u)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	if c.HasOldPassword && !u.isCorrectPassword(c.Form.OldPassword) {
-		c.Error = "Incorrect old password"
-	} else if len(c.Form.NewPassword) < MIN_PASS_LEN {
-		c.Error = "Passwords is too short"
-	} else if c.Form.ConfirmNewPassword != c.Form.NewPassword {
-		c.Error = "New password doesn't match confirmation"
-	} else if err := u.changePassword(h.db, c.Form.NewPassword); err != nil {
+	err = schema.NewDecoder().Decode(c.Form, r.PostForm)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	} else if err := u.saveToSession(h.s, w, r); err != nil {
+	}
+
+	perr, ierr := h.updatePassword(c, u, w, r)
+	if ierr != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if len(perr) != 0 {
+		c.Message = perr
 	} else {
 		c.Message = "Password changed"
 	}
 
-  nc := newChangePasswordContext(u)
-  nc.Error = c.Error
-  nc.Message = c.Message
+	nc, err := newChangePasswordContext(h.db, u)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	nc.Error = c.Error
+	nc.Message = c.Message
 	templateHandler("change_password.html", nc, w, r)
 }
 
 func (h changePasswordPostHandler) updatePassword(
-	c changePasswordContext, u *User, w http.ResponseWriter, r *http.Request) (passwordError string, internalError error) {
-  if c.HasOldPassword && !u.isCorrectPassword(c.Form.OldPassword) {
-		passwordError = "Incorrect old password"
-	} else if len(c.Form.NewPassword) < MIN_PASS_LEN {
+	c *changePasswordContext, u *User, w http.ResponseWriter, r *http.Request) (passwordError string, err error) {
+	hp, err := u.HasPassword(h.db)
+	if err != nil {
+		return
+	}
+
+	if hp {
+		cp, err := u.isCorrectPassword(h.db, c.Form.OldPassword)
+		if err != nil {
+			return "", err
+		}
+		if !cp {
+			return "Incorrect old password", nil
+		}
+	}
+
+	if len(c.Form.NewPassword) < MIN_PASS_LEN {
 		passwordError = "Passwords is too short"
 	} else if c.Form.ConfirmNewPassword != c.Form.NewPassword {
 		passwordError = "New password doesn't match confirmation"
-	} else if err := u.changePassword(h.db, c.Form.NewPassword); err != nil {
-		return passwordError, err
-	} else if err := u.saveToSession(h.s, w, r); err != nil {
-		return passwordError, err
 	}
-	return passwordError, nil
+	err = u.changePassword(h.db, c.Form.NewPassword)
+	return
 }
